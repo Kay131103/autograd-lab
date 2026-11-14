@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Autograd Lab — backprop from scratch, in your browser</title>
+    <meta name="description" content="A reverse-mode autodiff engine written from scratch, training a neural network live in your browser. Watch the gradients flow." />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%232563EB'/><text x='50' y='70' font-size='55' text-anchor='middle' fill='%23fff' font-family='monospace' font-weight='700'>∂</text></svg>" />
+    <style>
+      :root {
+        --bg: #faf8f5; --paper: #fffdf9; --ink: #1a1a1a; --ink-soft: #4a4a4a; --faint: #8a8a8a;
+        --elec: #2563eb; --elec-soft: #dbeafe; --coral: #f87171; --coral-soft: #fee2e2;
+        --sage: #86efac; --sage-soft: #dcfce7; --butter: #fde68a; --lav: #c4b5fd;
+        --win-shadow: 4px 4px 0 var(--ink);
+      }
+      * { box-sizing: border-box; margin: 0; }
+      body {
+        background: var(--bg); color: var(--ink);
+        font: 15px/1.5 "DM Sans", system-ui, sans-serif;
+        padding: 28px 20px 60px;
+      }
+      .wrap { max-width: 1140px; margin: 0 auto; }
+      header h1 { font-family: "Plus Jakarta Sans", sans-serif; font-weight: 800; font-size: clamp(30px, 4.5vw, 44px); }
+      header .sub { color: var(--ink-soft); max-width: 760px; margin-top: 8px; }
+      header .badge-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+      .badge {
+        font-family: "JetBrains Mono", monospace; font-size: 11px;
+        border: 1.5px solid var(--ink); border-radius: 999px; padding: 3px 11px; background: var(--paper);
+      }
+      .badge.blue { background: var(--elec-soft); } .badge.sage { background: var(--sage-soft); } .badge.butter { background: var(--butter); }
+
+      .lab { display: grid; grid-template-columns: 300px 1fr; gap: 16px; margin-top: 26px; }
+      @media (max-width: 900px) { .lab { grid-template-columns: 1fr; } }
+      .panel {
+        background: var(--paper); border: 2px solid var(--ink); border-radius: 14px;
+        box-shadow: var(--win-shadow); padding: 16px;
+      }
+      .panel h3 { font-family: "JetBrains Mono", monospace; font-size: 12px; letter-spacing: 0.12em; color: var(--elec); margin-bottom: 12px; }
+
+      .ctl { margin-bottom: 14px; }
+      .ctl label { display: flex; justify-content: space-between; font-size: 13px; font-weight: 700; margin-bottom: 4px; }
+      .ctl label .val { font-family: "JetBrains Mono", monospace; font-weight: 500; color: var(--elec); }
+      .ctl input[type="range"] { width: 100%; accent-color: var(--elec); }
+      .ds-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+      .ds-grid button {
+        font-family: "JetBrains Mono", monospace; font-size: 12px;
+        border: 2px solid var(--ink); border-radius: 9px; background: var(--paper);
+        padding: 8px 4px; cursor: pointer;
+      }
+      .ds-grid button.active { background: var(--ink); color: var(--bg); }
+      .btn {
+        display: inline-flex; align-items: center; gap: 7px; justify-content: center;
+        font-weight: 700; font-size: 14px; padding: 9px 16px; border-radius: 10px;
+        border: 2px solid var(--ink); background: var(--paper); color: var(--ink);
+        box-shadow: 3px 3px 0 var(--ink); cursor: pointer; transition: transform 0.08s;
+      }
+      .btn:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink); }
+      .btn.primary { background: var(--elec); color: #fff; }
+      .btn.coral { background: var(--coral-soft); }
+      .btn-row { display: flex; gap: 9px; flex-wrap: wrap; margin-top: 4px; }
+      .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; }
+      .stat { border: 2px solid var(--ink); border-radius: 9px; padding: 8px 10px; background: var(--bg); }
+      .stat .v { font-family: "JetBrains Mono", monospace; font-weight: 700; font-size: 17px; }
+      .stat .l { font-size: 10.5px; color: var(--faint); font-family: "JetBrains Mono", monospace; }
+
+      canvas { display: block; width: 100%; border: 2px solid var(--ink); border-radius: 10px; background: var(--bg); }
+      .stack { display: flex; flex-direction: column; gap: 16px; }
+      .legend { display: flex; gap: 14px; font-size: 12px; color: var(--ink-soft); margin-top: 8px; flex-wrap: wrap; }
+      .legend .dot { display: inline-block; width: 11px; height: 11px; border-radius: 50%; border: 1.5px solid var(--ink); vertical-align: -1px; margin-right: 4px; }
+
+      .how { margin-top: 26px; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+      .how .card { background: var(--paper); border: 2px solid var(--ink); border-radius: 14px; padding: 16px; box-shadow: var(--win-shadow); }
+      .how h4 { font-family: "JetBrains Mono", monospace; font-size: 12px; color: var(--elec); margin-bottom: 8px; letter-spacing: 0.1em; }
+      .how p, .how li { font-size: 13.5px; color: var(--ink-soft); }
+      .how ol, .how ul { padding-left: 18px; margin-top: 6px; }
+      .how code { font-family: "JetBrains Mono", monospace; font-size: 12px; background: var(--sage-soft); border: 1px solid var(--ink); border-radius: 4px; padding: 0 4px; }
+      .grad-table { width: 100%; border-collapse: collapse; font-family: "JetBrains Mono", monospace; font-size: 11px; margin-top: 8px; }
+      .grad-table td { border-top: 1px solid #d8d2c8; padding: 3px 4px; }
+      .pos { color: #b91c1c; } .neg { color: #1d4ed8; }
+      footer { margin-top: 30px; text-align: center; font-family: "JetBrains Mono", monospace; font-size: 11.5px; color: var(--faint); }
+      footer a { color: var(--elec); }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <h1>Autograd Lab</h1>
+        <p class="sub">
+          A reverse-mode automatic differentiation engine written from scratch — no PyTorch, no libraries —
+          training a real neural network live in your browser. Every gradient you see below was computed
+          by ~120 lines of hand-written chain rule.
+        </p>
+        <div class="badge-row">
+          <span class="badge blue">reverse-mode autodiff</span>
+          <span class="badge sage">tanh MLP · SGD</span>
+          <span class="badge butter">0 dependencies</span>
+          <span class="badge">view source — it's all here</span>
+        </div>
+      </header>
+
+      <div class="lab">
+        <div class="panel">
+          <h3>CONTROLS</h3>
+          <div class="ctl">
+            <label>dataset</label>
+            <div class="ds-grid" id="dsGrid">
+              <button data-ds="moons" class="active">moons</button>
+              <button data-ds="circles">circles</button>
+              <button data-ds="spiral">spiral</button>
+              <button data-ds="xor">xor</button>
+            </div>
+          </div>
+          <div class="ctl">
+            <label>learning rate <span class="val" id="lrVal">0.05</span></label>
+            <input type="range" id="lr" min="1" max="100" value="5" />
+          </div>
+          <div class="ctl">
+            <label>hidden layers <span class="val" id="archVal">4,4</span></label>
+            <input type="range" id="arch" min="0" max="4" value="2" />
+          </div>
+          <div class="ctl">
+            <label>neurons / layer <span class="val" id="widthVal">8</span></label>
+            <input type="range" id="width" min="1" max="16" value="8" />
+          </div>
+          <div class="ctl">
+            <label>noise <span class="val" id="noiseVal">0.12</span></label>
+            <input type="range" id="noise" min="0" max="50" value="12" />
+          </div>
+          <div class="ctl">
+            <label>L2 regularisation <span class="val" id="l2Val">0.000</span></label>
+            <input type="range" id="l2" min="0" max="30" value="0" />
+          </div>
+          <div class="btn-row">
+            <button class="btn primary" id="playBtn">▶ train</button>
+            <button class="btn" id="stepBtn">1 step</button>
+            <button class="btn coral" id="resetBtn">reset</button>
+          </div>
+          <div class="stats">
+            <div class="stat"><div class="v" id="lossVal">—</div><div class="l">loss (MSE)</div></div>
+            <div class="stat"><div class="v" id="accVal">—</div><div class="l">accuracy</div></div>
+            <div class="stat"><div class="v" id="epochVal">0</div><div class="l">steps</div></div>
+            <div class="stat"><div class="v" id="gradVal">—</div><div class="l">‖grad‖</div></div>
+          </div>
+          <h3 style="margin-top:14px">GRADIENT FLOW · first layer w→n0</h3>
+          <table class="grad-table" id="gradTable"><tbody></tbody></table>
+        </div>
+
+        <div class="stack">
+          <div class="panel">
+            <h3>DECISION BOUNDARY — live</h3>
+            <canvas id="boundary" height="420"></canvas>
+            <div class="legend">
+              <span><span class="dot" style="background:var(--elec)"></span>class +1</span>
+              <span><span class="dot" style="background:var(--coral)"></span>class −1</span>
+              <span>background = model's output (blue: +, red: −, pale: undecided)</span>
+            </div>
+          </div>
+          <div class="panel">
+            <h3>LOSS CURVE</h3>
+            <canvas id="lossChart" height="160"></canvas>
+          </div>
+          <div class="panel">
+            <h3>THE NETWORK — edge weight = |w|, colour = sign</h3>
+            <canvas id="netGraph" height="260"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="how">
+        <div class="card">
+          <h4>WHAT IS AN AUTOGRAD ENGINE?</h4>
+          <p>
+            Every scalar in the network is a <code>Value</code> that remembers how it was created.
+            Arithmetic (<code>+</code>, <code>*</code>, <code>tanh</code>…) builds a computation graph.
+            Calling <code>loss.backward()</code> walks the graph in reverse topological order and applies
+            the chain rule at every node — that's all backpropagation is.
+          </p>
+        </div>
+        <div class="card">
+          <h4>THE CHAIN RULE, BY HAND</h4>
+          <p>For <code>c = a · b</code>, the engine closes over:</p>
+          <ol>
+            <li><code>∂c/∂a = b</code> → <code>a.grad += b.data * c.grad</code></li>
+            <li><code>∂c/∂b = a</code> → <code>b.grad += a.data * c.grad</code></li>
+          </ol>
+          <p>The whole engine is <code>src/engine.js</code> — about 120 lines, view source.</p>
+        </div>
+        <div class="card">
+          <h4>WHAT TO TRY</h4>
+          <ul>
+            <li>Set LR to 1.0 on <b>spiral</b> — watch the loss explode. Classic.</li>
+            <li>Drop hidden layers to 0 — the net can't bend, so moons stay unsolved.</li>
+            <li>Crank noise to 0.5 and add L2 — watch it resist memorising.</li>
+            <li>Pause mid-training and inspect the gradient table (left panel).</li>
+          </ul>
+        </div>
+      </div>
+
+      <footer>
+        built from scratch · <a href="https://github.com/Kay131103/autograd-lab">github.com/Kay131103/autograd-lab</a> · part of the krithiuk.space lab
+      </footer>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
