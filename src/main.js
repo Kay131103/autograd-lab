@@ -152,46 +152,53 @@ function drawNetGraph() {
   ctx.clearRect(0, 0, w, h);
   if (!net) return;
   const layers = net.layers;
-  const colW = (w - 80) / Math.max(1, layers.length - 1);
-  const pos = layers.map((L, li) =>
-    L.neurons.map((_, ni) => ({
-      x: 40 + li * colW,
-      y: h / 2 + (ni - (L.neurons.length - 1) / 2) * Math.min(34, (h - 40) / Math.max(1, L.neurons.length)),
-    })));
+  // columns: [inputs(2), hidden..., output(1)]
+  const colX = (ci) => 44 + ci * ((w - 88) / (layers.length));
+  const colY = (count, ni) =>
+    h / 2 + (ni - (count - 1) / 2) * Math.min(34, (h - 44) / Math.max(1, count));
+  const colCount = (ci) => (ci === 0 ? 2 : layers[ci - 1].neurons.length);
 
-  // edges with width = |weight|, colour = sign
-  layers.forEach((L, li) => {
-    if (li === layers.length - 1) return;
-    L.neurons.forEach((n, ni) => {
-      n.w.forEach((wt, pi) => {
-        const a = pos[li][pi], b = pos[li + 1][ni];
-        ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
+  /* edges: source neuron pi of column ci → neuron ni of column ci+1.
+     weight count of layer ci-1's neurons == colCount(ci) ✓ */
+  for (let ci = 0; ci < layers.length; ci++) {
+    const srcCount = colCount(ci);
+    const dstCount = colCount(ci + 1);
+    const srcX = colX(ci), dstX = colX(ci + 1);
+    for (let ni = 0; ni < dstCount; ni++) {
+      const neuron = layers[ci].neurons[ni];
+      neuron.w.forEach((wt, pi) => {
+        if (pi >= srcCount) return; // safety
+        const a = colY(srcCount, pi), b = colY(dstCount, ni);
+        ctx.beginPath(); ctx.moveTo(srcX, a); ctx.lineTo(dstX, b);
         ctx.lineWidth = Math.min(5, 0.4 + Math.abs(wt.data) * 1.6);
         ctx.strokeStyle = wt.data >= 0 ? C.blue : C.red;
         ctx.globalAlpha = Math.min(0.9, 0.15 + Math.abs(wt.data));
         ctx.stroke();
         ctx.globalAlpha = 1;
       });
-    });
-  });
+    }
+  }
 
-  // nodes
-  pos.forEach((col, li) => col.forEach((p, ni) => {
-    ctx.beginPath(); ctx.arc(p.x, p.y, 9, 0, Math.PI * 2);
-    const n = layers[li].neurons[ni];
-    const act = n.forward ? null : null;
-    ctx.fillStyle = "#fff";
-    ctx.fill();
-    ctx.lineWidth = 2; ctx.strokeStyle = C.ink; ctx.stroke();
-    if (li === 0) {
-      ctx.fillStyle = "#8a8a8a"; ctx.font = "10px 'JetBrains Mono'";
-      ctx.fillText(ni === 0 ? "x" : "y", p.x - 24, p.y + 3);
+  /* nodes */
+  for (let ci = 0; ci <= layers.length; ci++) {
+    const count = colCount(ci);
+    for (let ni = 0; ni < count; ni++) {
+      const x = colX(ci), y = colY(count, ni);
+      ctx.beginPath(); ctx.arc(x, y, 9, 0, Math.PI * 2);
+      ctx.fillStyle = ci === 0 ? "var(--elec-soft)" : "#fff";
+      ctx.fillStyle = "#fff";
+      ctx.fill();
+      ctx.lineWidth = 2; ctx.strokeStyle = C.ink; ctx.stroke();
+      if (ci === 0) {
+        ctx.fillStyle = "#8a8a8a"; ctx.font = "10px 'JetBrains Mono'";
+        ctx.fillText(ni === 0 ? "x" : "y", x - 26, y + 3);
+      }
+      if (ci === layers.length) {
+        ctx.fillStyle = "#8a8a8a"; ctx.font = "10px 'JetBrains Mono'";
+        ctx.fillText("ŷ", x + 15, y + 3);
+      }
     }
-    if (li === pos.length - 1) {
-      ctx.fillStyle = "#8a8a8a"; ctx.font = "10px 'JetBrains Mono'";
-      ctx.fillText("ŷ", p.x + 14, p.y + 3);
-    }
-  }));
+  }
 }
 
 function renderGradTable() {
