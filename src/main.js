@@ -7,6 +7,7 @@ let dataset = "moons";
 let data = [];
 let net = null;
 let training = false;
+let loopId = null;
 let steps = 0;
 let lossHistory = [];
 let lr = 0.05, l2 = 0, hiddenCount = 2, width = 8, noise = 0.12;
@@ -28,6 +29,7 @@ function regenerate() {
 
 function reset() {
   training = false;
+  stopLoop();
   $("playBtn").textContent = "▶ train";
   buildNet();
   renderGradTable();
@@ -44,7 +46,16 @@ function tick() {
   if (lossHistory.length > 600) lossHistory.shift();
   updateStats(loss, gradNorm);
   drawAll();
-  requestAnimationFrame(tick);
+}
+
+/* setInterval instead of rAF so training keeps running even in a background tab */
+function startLoop() {
+  if (loopId) return;
+  loopId = setInterval(tick, 16);
+}
+function stopLoop() {
+  clearInterval(loopId);
+  loopId = null;
 }
 
 function updateStats(loss, gradNorm) {
@@ -241,7 +252,7 @@ $("dsGrid").addEventListener("click", (e) => {
 $("playBtn").addEventListener("click", () => {
   training = !training;
   $("playBtn").textContent = training ? "⏸ pause" : "▶ train";
-  if (training) tick();
+  if (training) startLoop(); else stopLoop();
 });
 $("stepBtn").addEventListener("click", () => {
   const batch = Array.from({ length: 24 }, () => data[Math.floor(Math.random() * data.length)]);
